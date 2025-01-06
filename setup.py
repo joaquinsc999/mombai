@@ -2,10 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="mombai",
-    version="0.1.0",
+    version="1.0.0",
     description="A deep learning library for advanced neural network layers.",
-    author="Joaquín Solórzano",
-    author_email="tu_correo@example.com",
+    include_package_data=True,
+    long_description=open('README.md').read(),
+    long_description_content_type='text/markdown',
+    author='Joaquín Francisco Solórzano Corea',
+    author_email='joaquinscorea@gmail.com',
     url="https://github.com/joaquinsc999/mombai",
     packages=find_packages(),
     install_requires=[
