@@ -55,7 +55,7 @@ print(f"Predicción para x=0.5: {y_pred}")
 ## 2. Uso de `WAFLayer`
 `WAFLayer` es una capa que permite combinar múltiples funciones de activación en una sola transformación de los datos. Se pueden sumar o promediar las activaciones antes de aplicarlas.
 
-Ejemplo de uso en una red densa:
+Ejemplo de uso en una red densa con compresor de suma:
 
 ```python
 import tensorflow as tf
@@ -71,13 +71,13 @@ model.compile(optimizer='adam', loss='mse')
 model.summary()
 ```
 
-Ejemplo de uso después de una capa convolucional:
+Ejemplo de uso después de una capa convolucional con compresor de promedio:
 
 ```python
 model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
     tf.keras.layers.MaxPooling2D((2, 2)),
-    WAFLayer(units=64, activations=['relu', 'swish', 'elu']),
+    WAFLayer(units=64, activations=['relu', 'swish', 'elu'], compressor="avg"),
     tf.keras.layers.Dense(10, activation='softmax')
 ])
 
