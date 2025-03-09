@@ -87,6 +87,43 @@ model.summary()
 
 ---
 
+---
+
+## 3. Uso de `WAFLayerNorm`
+`WAFLayerNorm` es una capa que permite combinar múltiples funciones de activación en una sola transformación de los datos. Se pueden sumar o promediar las activaciones antes de aplicarlas y se aplica una normalización para controlar el aporte de cada función.
+
+Ejemplo de uso en una red densa con compresor de suma:
+
+```python
+import tensorflow as tf
+from mombai.layers.multi_activation import WAFLayerNorm
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Dense(64, input_shape=(10,)),
+    WAFLayerNorm(units=32, activations=['relu', 'swish', 'gelu'], compressor="sum"),
+    tf.keras.layers.Dense(1)
+])
+
+model.compile(optimizer='adam', loss='mse')
+model.summary()
+```
+
+Ejemplo de uso después de una capa convolucional con compresor de promedio:
+
+```python
+model = tf.keras.Sequential([
+    tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    WAFLayerNorm(units=64, activations=['relu', 'swish', 'elu'], compressor="avg"),
+    tf.keras.layers.Dense(10, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.summary()
+```
+
+---
+
 ## 3. Uso de `MAXLayerWithAttention`
 Esta capa permite que la red **seleccione dinámicamente** qué funciones de activación usar en cada entrada mediante un mecanismo de atención.
 

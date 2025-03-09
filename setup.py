@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="mombai",
-    version="2.0.1",
+    version="2.0.2",
     description="A deep learning library for advanced neural network layers.",
     include_package_data=True,
     long_description=open('README.md').read(),

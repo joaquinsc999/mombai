@@ -157,6 +157,161 @@ class WAFLayer(Layer):
 
 
 @tf.keras.utils.register_keras_serializable()
+class WAFLayerNorm(Layer):
+    def __init__(self, units=32, activations=[], compressor="sum", apply_father_activation=False, **kwargs):
+        super(WAFLayerNorm, self).__init__(**kwargs)
+        self.units = units
+        self.compressor = compressor
+        self.apply_father_activation = apply_father_activation
+
+        # Map activation names to functions
+        activation_map = {
+            "relu": tf.nn.relu,
+            "sigmoid": tf.nn.sigmoid,
+            "tanh": tf.nn.tanh,
+            "softmax": tf.nn.softmax,
+            "softplus": tf.nn.softplus,
+            "softsign": tf.nn.softsign,
+            "elu": tf.nn.elu,
+            "selu": tf.nn.selu,
+            "swish": tf.nn.swish,
+            "gelu": tf.nn.gelu,
+            "leaky_relu": tf.nn.leaky_relu,
+            "relu6": tf.nn.relu6,
+            "hard_sigmoid": tf.keras.activations.hard_sigmoid,
+            "exponential": tf.keras.activations.exponential,
+            "linear": tf.keras.activations.linear,
+            "log_softmax": tf.nn.log_softmax,
+            "crelu": tf.nn.crelu
+            }
+
+        self.activation_names = []
+        self.activations = []
+        for act in activations:
+            if isinstance(act, str):
+                if act in activation_map:
+                    self.activations.append(activation_map[act])
+                    self.activation_names.append(act)
+                else:
+                    raise ValueError(f"Unknown activation function name: {act}")
+            else:
+                # Se asume que es una función
+                self.activations.append(act)
+                self.activation_names.append(act.__name__)
+
+    def build(self, input_shape):
+        self.w = self.add_weight(
+            name="kernel",
+            shape=(input_shape[-1], self.units),
+            initializer="glorot_uniform",
+            trainable=True
+        )
+
+        self.wf = self.add_weight(
+            name="kernel_functions",
+            shape=(self.units, len(self.activations)),
+            initializer="glorot_uniform",
+            trainable=True
+        )
+
+        self.b = self.add_weight(
+            name="bias",
+            shape=(self.units,),
+            initializer="zeros",
+            trainable=True
+        )
+
+        self.bf = self.add_weight(
+            name="bias_functions",
+            shape=(self.units, len(self.activations)),
+            initializer="zeros",
+            trainable=True
+        )
+
+        # softingparam es un parámetro diferenciable para la father activation
+        self.softingparam = self.add_weight(
+            name="softingparam",
+            shape=(1,),  # Valor escalar
+            initializer=tf.keras.initializers.Constant(1.0),
+            trainable=True
+        )
+
+        super(WAFLayerNorm, self).build(input_shape)
+
+    def call(self, inputs):
+        # Transformación lineal
+        weighted_sum = tf.matmul(inputs, self.w) + self.b  # Forma: (batch, units)
+
+        # Normalización estándar: se resta la media y se divide por la desviación estándar
+        mean, variance = tf.nn.moments(weighted_sum, axes=[-1], keepdims=True)
+        normalized = (weighted_sum - mean) / tf.sqrt(variance + 1e-5)  # Se agrega epsilon para estabilidad
+
+        # Expandir para compatibilidad y aplicar pesos específicos para cada función
+        expanded_norm = tf.expand_dims(normalized, axis=-1)  # Forma: (batch, units, 1)
+        transformed = expanded_norm * self.wf + self.bf       # Forma: (batch, units, len(activations))
+
+        # Aplicar cada función de activación a su correspondiente canal
+        results = [func(transformed[..., i]) for i, func in enumerate(self.activations)]
+
+        # Combinar resultados según el modo compressor: suma o promedio
+        if self.compressor == "sum":
+            result = tf.reduce_sum(tf.stack(results, axis=-1), axis=-1)
+        elif self.compressor == "avg":
+            result = tf.reduce_mean(tf.stack(results, axis=-1), axis=-1)
+        else:
+            raise ValueError("Invalid compressor. Use 'sum' or 'avg'.")
+
+        # Aplicar la father activation si está habilitada
+        if self.apply_father_activation:
+            result = result * tf.nn.sigmoid(self.softingparam * result)
+
+        return result
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], self.units)
+
+    def get_config(self):
+        config = super(WAFLayerNorm, self).get_config()
+        config.update({
+            "units": self.units,
+            "activations": self.activation_names,  # Se guardan los nombres de las funciones
+            "compressor": self.compressor,
+            "apply_father_activation": self.apply_father_activation,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        activations = config.pop('activations')
+        instance = cls(**config)
+
+        # Mapear nombres de activaciones a funciones
+        activation_map = {
+            "relu": tf.nn.relu,
+            "sigmoid": tf.nn.sigmoid,
+            "tanh": tf.nn.tanh,
+            "softmax": tf.nn.softmax,
+            "softplus": tf.nn.softplus,
+            "softsign": tf.nn.softsign,
+            "elu": tf.nn.elu,
+            "selu": tf.nn.selu,
+            "swish": tf.nn.swish,
+            "gelu": tf.nn.gelu,
+            "leaky_relu": tf.nn.leaky_relu,
+            "relu6": tf.nn.relu6,
+            "hard_sigmoid": tf.keras.activations.hard_sigmoid,
+            "exponential": tf.keras.activations.exponential,
+            "linear": tf.keras.activations.linear,
+            "log_softmax": tf.nn.log_softmax,
+            "crelu": tf.nn.crelu
+            }
+        instance.activations = [activation_map[name] for name in activations]
+        instance.activation_names = activations
+
+        return instance
+
+
+@tf.keras.utils.register_keras_serializable()
 class MAXLayerWithAttention(Layer):
     def __init__(self, units=32, activations=[], return_sequences=True, **kwargs):
         super(MAXLayerWithAttention, self).__init__(**kwargs)
@@ -308,8 +463,6 @@ class MAXLayerWithAttention(Layer):
         return instance
 
 
-import tensorflow as tf
-from tensorflow.keras.layers import Layer, Dense
 
 @tf.keras.utils.register_keras_serializable()
 class MAXLayerWithSelfAttention(Layer):
